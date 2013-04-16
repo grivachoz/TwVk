@@ -1,19 +1,20 @@
-##!/usr/bin/env python
+#!/usr/bin/env python
 
 import tweepy, urllib, urllib2, json, requests, logging
 
 #Twitter tokens
-consumer_key = "S5Akv7vW8zQEujW6j67GQ"
-consumer_secret = "vReRo7QuRnJNVhGHTUMQjE9CkgDr3WPNYePoOaljeU"
-access_key = "350125914-hwlA4CryOjwBUnmkGyTaFThJhIWMqASBzrgFKT12"
-access_secret = "8aQcHplCbenVI3WlRB2alIGvbn5LCyfQNhpGHYR6oQ"
+consumer_key = ""
+consumer_secret = ""
+access_key = ""
+access_secret = ""
+
+#start with @
+twitter_username = '@'
 
 #VK tokens
 #url for token: https://oauth.vk.com/authorize?client_id={appId}&scope=wall,photos,offline&redirect_uri=http://oauth.vk.com/blank.html&display=page&response_type=token
-vkToken = "5de2747dc7f337856a4f9eaa1bb7ebe8f809f691b2bb6b04586734037da57a53e7540c263ff0e3fc3807"
+vkToken = ""
 
-#EyeEm token
-eyeEmToken = "1d458eb10a2cc545790ff3748c2acff567fce124"
 
 #Main method
 def main():
@@ -69,22 +70,39 @@ def handleTweet(tweet):
     text = tweet["text"]
     logging.info('Tweet text: ' + text)
     #check for answer, retweet or mention
-    if not text.startswith('@') and not "@zzeneg" in text:
+    if not text.startswith('@') and not twitter_username in text:
         #get urls in tweet
         urls = tweet["entities"]["urls"]
-        eyeEmId = ""
         attachments = ""
+        first_url = urls[0]["expanded_url"]
+
+        if 1 <= len(urls):
+
+            hosts = ['youtu.be','vimeo','youtube']
+            if any(s in first_url for s in hosts):
+                tmp = vkMethod('video.save',{'is_private':'1','link':first_url})
+                logging.info('VK punched with %s' % first_url)
+
+                uploadUrl = tmp['response']['upload_url']
+                vid = tmp['response']['vid']
+                oid = tmp['response']['owner_id']
+                logging.info('VK answered with video_id %s' % vid)
+
+                r = requests.get(uploadUrl).json()
+                logging.info('Poked VK with upload_url and get these: %s' % r)
+
+                if r['response'] == 1:
+                    attachments = 'video%(oid)s_%(vid)s' % {'oid':oid,'vid':vid}
+                    logging.info('Posting %s' % attachments)
+                    text = text.replace(first_url,'')
+            else:
+                attachments = first_url
 
         #replace shortened urls
         for url in urls:
             text = text.replace(url["url"], url["expanded_url"])
-            #if it's EyeEm photo - get it id
-            if url["expanded_url"].startswith("http://www.eyeem.com/p/"):
-                eyeEmId = url["expanded_url"].replace("http://www.eyeem.com/p/", "")
-                logging.info('EyeEm Id: ' + eyeEmId)
-                photoUrl = getEyeEmPhotoUrlById(eyeEmId)
-                logging.info('Photo found. Url: ' + photoUrl)
-                attachments = uploadPhoto(photoUrl)
+
+        text = text.strip()
 
         logging.info('Tweet text with urls: ' + text)
 
@@ -97,7 +115,7 @@ def handleTweet(tweet):
 
         logging.info('Attachments: ' + attachments)
         #post to VK and attach photo ID
-        #vkMethod('wall.post', {'message': text,'attachments':attachments})
+        vkMethod('wall.post', {'message': text,'attachments':attachments})
         logging.info('Posted to VK')
     else:
         logging.info('Skipping tweet')
@@ -114,7 +132,7 @@ def uploadPhoto(fileUrl):
     logging.info('Photo saved on local drive')
     #uploading photo to VK
     files = {'photo': open('temp.jpg', 'rb')}
-    response = requests.post(uploadUrl, files = files).json
+    response = requests.post(uploadUrl, files = files).json()
     logging.info('Photo uploaded')
     #add photo in wall album
     response = vkMethod('photos.saveWallPhoto', response)
@@ -127,18 +145,13 @@ def vkMethod(method, data={}):
     url = 'https://api.vk.com/method/%s.json' % (method)
     data.update({'access_token': vkToken})
 
-    response = requests.post(url, data).json
+    response = requests.post(url, data)
 
     if 'error' in response:
         error = response['error']
         logging.error('API: error (%s)' % (error['error_msg']))
 
-    return response
+    return response.json()
 
-#Method getting photo URL from EyeEm
-def getEyeEmPhotoUrlById(photoId):
-    url = "https://www.eyeem.com/api/v2/photos/{0}?access_token={1}".format(photoId, eyeEmToken)
-    response = requests.get(url).json
-    return response['photo']['photoUrl']
 
 main()

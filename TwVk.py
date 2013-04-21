@@ -54,6 +54,7 @@ def main():
                 if not length.isdigit(): continue
                 #read response with length
                 tweet = json.loads(r.read(int(length)))
+                logging.info(tweet)
 
                 #if it's a tweet - start handling it
                 if "user" in tweet and "text" in tweet and "created_at" in tweet and "id" in tweet:
@@ -74,27 +75,15 @@ def handleTweet(tweet):
         #get urls in tweet
         urls = tweet["entities"]["urls"]
         attachments = ""
-        first_url = urls[0]["expanded_url"]
 
         if 1 <= len(urls):
 
+            first_url = urls[0]["expanded_url"]
+
             hosts = ['youtu.be','vimeo','youtube']
             if any(s in first_url for s in hosts):
-                tmp = vkMethod('video.save',{'is_private':'1','link':first_url})
-                logging.info('VK punched with %s' % first_url)
-
-                uploadUrl = tmp['response']['upload_url']
-                vid = tmp['response']['vid']
-                oid = tmp['response']['owner_id']
-                logging.info('VK answered with video_id %s' % vid)
-
-                r = requests.get(uploadUrl).json()
-                logging.info('Poked VK with upload_url and get these: %s' % r)
-
-                if r['response'] == 1:
-                    attachments = 'video%(oid)s_%(vid)s' % {'oid':oid,'vid':vid}
-                    logging.info('Posting %s' % attachments)
-                    text = text.replace(first_url,'')
+                attachments = uploadVideo(first_url)
+                text = text.replace(first_url," ")
             else:
                 attachments = first_url
 
@@ -114,11 +103,34 @@ def handleTweet(tweet):
             attachments = uploadPhoto(photo["media_url"])
 
         logging.info('Attachments: ' + attachments)
+
         #post to VK and attach photo ID
         vkMethod('wall.post', {'message': text,'attachments':attachments})
         logging.info('Posted to VK')
+
     else:
         logging.info('Skipping tweet')
+        
+
+def uploadVideo(fileUrl):
+
+    tmp = vkMethod('video.save',{'is_private':'1','link':fileUrl})
+    logging.info('VK punched with %s' % fileUrl)
+
+    uploadUrl = tmp['response']['upload_url']
+    vid = tmp['response']['vid']
+    oid = tmp['response']['owner_id']
+    logging.info('VK answered with video_id %s' % vid)
+
+    r = requests.get(uploadUrl).json()
+    logging.info('Poked VK with upload_url and get these: %s' % r)
+
+    if r['response'] == 1:
+        attachments = 'video%(oid)s_%(vid)s' % {'oid':oid,'vid':vid}
+        logging.info('Posting %s' % attachments)
+
+        return attachments
+
 
 #Method uploading photo to VK
 def uploadPhoto(fileUrl):

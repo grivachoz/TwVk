@@ -81,9 +81,13 @@ def handleTweet(tweet):
             first_url = urls[0]["expanded_url"]
 
             hosts = ['youtu.be','vimeo','youtube']
+            exts = ['.jpg','.png','.jpeg']
+            
             if any(s in first_url for s in hosts):
                 attachments = uploadVideo(first_url)
                 text = text.replace(first_url," ")
+            elif any(s in first_url for s in exts):
+                attachments = uploadPhoto(first_url)
             else:
                 attachments = first_url
 

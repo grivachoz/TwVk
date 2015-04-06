@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import tweepy, urllib, urllib2, json, requests, logging
+import tweepy, json, requests, logging, time
 
 #Twitter tokens
 consumer_key = ""
@@ -9,7 +9,7 @@ access_key = ""
 access_secret = ""
 
 #start with @
-twitter_username = '@'
+twitter_username = ''
 
 #VK tokens
 #url for token: https://oauth.vk.com/authorize?client_id={appId}&scope=wall,photos,offline&redirect_uri=http://oauth.vk.com/blank.html&display=page&response_type=token
@@ -27,40 +27,30 @@ def main():
 
         #authorization in twitter
         url = "https://userstream.twitter.com/1.1/user.json"
-        param = {"delimited":"length", "with":"user"}
-        header = {}
+        param = {"with":"user"}
         auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
         auth.set_access_token(access_key, access_secret)
-        auth.apply_auth(url, "POST", header,param)
-
         logging.info('Twitter authorization successful')
 
         #getting tweets
-        req = urllib2.Request(url)
-        req.add_header("Authorization", header["Authorization"])
-        r = urllib2.urlopen(req, urllib.urlencode(param), 90)
+        savefile = open('TwVkStatus.txt','r');
+        lasttweet = savefile.readline()
+        savefile.close()
+        twApi = tweepy.API(auth)
 
-        #reading responses
         while True:
-            try:
-                #get response length
-                length = ""
-                while True:
-                    c = r.read(1)
-                    if c == "\n": break
-                    if c == "": raise Exception
-                    length += c
-                length = length.strip()
-                if not length.isdigit(): continue
-                #read response with length
-                tweet = json.loads(r.read(int(length)))
-                logging.info(tweet)
+            savefile = open('TwVkStatus.txt','rw+');
+            tweets = twApi.user_timeline(since_id=lasttweet);
+            for tweet in reversed(tweets):
+                handleTweet(tweet.__dict__)
+                logging.info('Tweet ID: '+str(tweet.id))
+                lasttweet = str(tweet.id)
+                savefile.seek(0,0)
+                savefile.write(lasttweet)
+            savefile.close()
+            time.sleep(60)
+            logging.info('Tic-tac')
 
-                #if it's a tweet - start handling it
-                if "user" in tweet and "text" in tweet and "created_at" in tweet and "id" in tweet:
-                    handleTweet(tweet)
-            except:
-                logging.exception('Exception')
     except:
         logging.exception('Main exception')
 
@@ -82,7 +72,7 @@ def handleTweet(tweet):
 
             hosts = ['youtu.be','vimeo','youtube']
             exts = ['.jpg','.png','.jpeg']
-            
+
             if any(s in first_url for s in hosts):
                 attachments = uploadVideo(first_url)
                 text = text.replace(first_url," ")
@@ -136,23 +126,27 @@ def uploadVideo(fileUrl):
         return attachments
 
 
-#Method uploading photo to VK
 def uploadPhoto(fileUrl):
     logging.info('Start uploading photo')
     #get url for uploading photo
     response = vkMethod('photos.getWallUploadServer')
     uploadUrl = response['response']['upload_url']
     logging.info('Get upload url: ' + uploadUrl)
-    #saving photo locally
-    urllib.urlretrieve(fileUrl,'temp.jpg')
+
+    #saving photo locally    
+    with open('temp.jpg','wb') as tempfile:
+        photo = requests.get(fileUrl, stream=True)
+        for block in photo.iter_content(1024):
+            tempfile.write(block)
     logging.info('Photo saved on local drive')
+
     #uploading photo to VK
-    files = {'photo': open('temp.jpg', 'rb')}
+    files = {'photo': open('temp.jpg','rb')}
     response = requests.post(uploadUrl, files = files).json()
     logging.info('Photo uploaded')
     #add photo in wall album
     response = vkMethod('photos.saveWallPhoto', response)
-    logging.info('Photo saved in wall album')
+    logging.info('Photo saved in wall album ')
     #return photo ID
     return response['response'][0]['id']
 
